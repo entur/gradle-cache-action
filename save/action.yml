@@ -18,7 +18,7 @@ inputs:
     default: "default"
   build-outcome:
     description: >
-      Outcome of the build step. Pass `${{ job.status }}` here.
+      Outcome of the build step. Pass `job.status` here.
       Accepted values: success, failure, cancelled.
       When cancelled the save is skipped entirely.
     required: true
