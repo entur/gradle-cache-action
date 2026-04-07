@@ -17,26 +17,15 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      # Download Gradle 8.1.1 and regenerate the wrapper so the wrapper
-      # properties and jar exactly match this release.
-      - name: Set up Gradle 8.1.1 wrapper
-        run: |
-          curl -sL "https://services.gradle.org/distributions/gradle-8.1.1-bin.zip" -o /tmp/gradle.zip
-          unzip -q /tmp/gradle.zip -d /tmp/gradle-dist
-          /tmp/gradle-dist/gradle-8.1.1/bin/gradle \
-            -p example wrapper --gradle-version 8.1.1 --distribution-type bin
-          rm -rf /tmp/gradle.zip /tmp/gradle-dist
-          chmod +x example/gradlew
-
       # ── First restore ─────────────────────────────────────────────────────
       - name: Restore Gradle cache
         uses: ./restore
         with:
-          gradle-home-directory: example
+          gradle-home-directory: examples/gradle-8-1
 
       - name: Build and test
-        run: ./gradlew build
-        working-directory: example
+        run: ./gradlew build --no-daemon
+        working-directory: examples/gradle-8-1
 
       # Plant sentinel files in both cache directories.  After the cache is
       # saved and the local directories are deleted, a second restore must
@@ -51,7 +40,7 @@ jobs:
         if: always()
         uses: ./save
         with:
-          gradle-home-directory: example
+          gradle-home-directory: examples/gradle-8-1
           build-outcome: ${{ job.status }}
 
       # Wipe the local Gradle home so the second restore starts from scratch.
@@ -62,7 +51,7 @@ jobs:
       - name: Restore Gradle cache (verify round-trip)
         uses: ./restore
         with:
-          gradle-home-directory: example
+          gradle-home-directory: examples/gradle-8-1
 
       - name: Verify custom files survived the save/delete/restore cycle
         run: |
