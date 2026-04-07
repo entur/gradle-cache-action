@@ -9,6 +9,7 @@ Restore and save Gradle wrapper and dependency caches in GitHub Actions **withou
 Supports Gradle **8.0 or higher**.
 
 ## Usage
+Add **TWO** steps:
 
 ```yaml
 steps:
