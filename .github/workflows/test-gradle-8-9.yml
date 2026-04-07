@@ -1,0 +1,85 @@
+name: Test Gradle 8.9
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Download Gradle 8.9 and regenerate the wrapper so the wrapper
+      # properties and jar exactly match this release.
+      - name: Set up Gradle 8.9 wrapper
+        run: |
+          curl -sL "https://services.gradle.org/distributions/gradle-8.9-bin.zip" -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp/gradle-dist
+          /tmp/gradle-dist/gradle-8.9/bin/gradle \
+            -p example wrapper --gradle-version 8.9 --distribution-type bin
+          rm -rf /tmp/gradle.zip /tmp/gradle-dist
+          chmod +x example/gradlew
+
+      # ── First restore ─────────────────────────────────────────────────────
+      - name: Restore Gradle cache
+        uses: ./restore
+        with:
+          gradle-home-directory: example
+
+      - name: Build and test
+        run: ./gradlew build
+        working-directory: example
+
+      # Plant sentinel files in both cache directories.  After the cache is
+      # saved and the local directories are deleted, a second restore must
+      # bring them back for the verification step to pass.
+      - name: Add custom files to Gradle cache directories
+        run: |
+          mkdir -p ~/.gradle/caches ~/.gradle/wrapper/dists
+          echo "gradle-8.9-deps-marker" > ~/.gradle/caches/.test-marker
+          echo "gradle-8.9-wrapper-marker" > ~/.gradle/wrapper/dists/.test-marker
+
+      - name: Save Gradle cache
+        if: always()
+        uses: ./save
+        with:
+          gradle-home-directory: example
+          build-outcome: ${{ job.status }}
+
+      # Wipe the local Gradle home so the second restore starts from scratch.
+      - name: Delete local Gradle cache directories
+        run: rm -rf ~/.gradle/caches ~/.gradle/wrapper/dists
+
+      # ── Second restore ────────────────────────────────────────────────────
+      - name: Restore Gradle cache (verify round-trip)
+        uses: ./restore
+        with:
+          gradle-home-directory: example
+
+      - name: Verify custom files survived the save/delete/restore cycle
+        run: |
+          FAIL=0
+
+          if [[ ! -f ~/.gradle/wrapper/dists/.test-marker ]]; then
+            echo "::error::Wrapper cache marker not found after restore — wrapper cache round-trip failed."
+            FAIL=1
+          else
+            echo "Wrapper cache marker: $(cat ~/.gradle/wrapper/dists/.test-marker)"
+          fi
+
+          if [[ ! -f ~/.gradle/caches/.test-marker ]]; then
+            echo "::error::Dependency cache marker not found after restore — dependency cache round-trip failed."
+            FAIL=1
+          else
+            echo "Dependency cache marker: $(cat ~/.gradle/caches/.test-marker)"
+          fi
+
+          exit $FAIL

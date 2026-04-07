@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate action.yml files
+        run: |
+          # Basic YAML syntax check using Python (always available on ubuntu runners)
+          python3 -c "
+          import yaml, sys, pathlib
+          files = list(pathlib.Path('.').rglob('action.yml'))
+          for f in files:
+              try:
+                  yaml.safe_load(f.read_text())
+                  print(f'  OK  {f}')
+              except yaml.YAMLError as e:
+                  print(f'FAIL  {f}: {e}', file=sys.stderr)
+                  sys.exit(1)
+          print(f'All {len(files)} action.yml file(s) are valid YAML.')
+          "

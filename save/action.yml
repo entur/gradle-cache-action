@@ -1,0 +1,183 @@
+name: Gradle Cache Save
+description: >
+  Clean and save Gradle wrapper and dependency caches.
+  Call this action with `if: always()` at the end of your job, passing
+  build-outcome so the cache is tagged correctly. Caches from failed builds
+  are saved under a separate key and are never used as the primary restore
+  target for subsequent builds.
+
+inputs:
+  gradle-home-directory:
+    description: Root directory of the Gradle project (where gradlew lives)
+    required: false
+    default: "."
+  cache-prefix:
+    description: >
+      Must match the value passed to the restore action.
+    required: false
+    default: "default"
+  build-outcome:
+    description: >
+      Outcome of the build step. Pass `${{ job.status }}` here.
+      Accepted values: success, failure, cancelled.
+      When cancelled the save is skipped entirely.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Exit immediately for cancelled jobs — no point caching anything.
+    - name: Skip on cancelled
+      if: inputs.build-outcome == 'cancelled'
+      shell: bash
+      run: echo "::notice::Job was cancelled — skipping cache save."
+
+    # Save the wrapper distribution so subsequent runs skip the download even
+    # when the build failed.  actions/cache/save is a no-op if the key already
+    # exists in the cache.
+    - name: Save Gradle wrapper cache
+      if: inputs.build-outcome != 'cancelled' && env.GRADLE_WRAPPER_CACHE_HIT != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ~/.gradle/wrapper/dists
+        key: gradle-wrapper-${{ runner.os }}-${{ env.GRADLE_CACHE_VERSION }}
+
+    # Re-hash build files (they may have been generated/modified during the build)
+    # and compute the key we would save under for this build outcome:
+    #   success → gradle-deps-…-{action-ref}-{gradle-version}-{prefix}-{hash}
+    #   failure → gradle-deps-…-{action-ref}-{gradle-version}-{prefix}-{hash}-failed
+    #
+    # Including the action ref means bumping the action version automatically
+    # busts all caches, which is useful when the action changes what it stores.
+    #
+    # NEEDS_SAVE is true when the key we intend to write differs from what was
+    # restored — i.e. there is no existing entry that already represents this
+    # exact (action-ref × hash × outcome) combination.
+    - name: Compute save key and decide whether to save
+      if: inputs.build-outcome != 'cancelled'
+      id: save-key
+      shell: bash
+      env:
+        GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
+        BUILD_OUTCOME: ${{ inputs.build-outcome }}
+        ACTION_REF: ${{ github.action_ref || 'local' }}
+      run: |
+        CURRENT_HASH=$(find "${GRADLE_HOME_DIR}" \
+          \( -name "*.gradle" \
+          -o -name "*.gradle.kts" \
+          -o -name "gradle.properties" \
+          -o -name "gradle-wrapper.properties" \
+          -o -name "*.versions.toml" \) \
+          -type f -print0 2>/dev/null \
+          | sort -z \
+          | xargs -0 sha256sum \
+          | sha256sum \
+          | cut -c1-64)
+
+        if [[ "$BUILD_OUTCOME" == "success" ]]; then
+          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${{ inputs.cache-prefix }}-${CURRENT_HASH}"
+        else
+          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${{ inputs.cache-prefix }}-${CURRENT_HASH}-failed"
+        fi
+
+        echo "save-key=${SAVE_KEY}" >> "$GITHUB_OUTPUT"
+
+        if [[ "$SAVE_KEY" == "$GRADLE_DEP_CACHE_RESTORED_KEY" ]]; then
+          echo "GRADLE_CACHE_NEEDS_SAVE=false" >> "$GITHUB_ENV"
+          echo "::notice::Dependency cache '${SAVE_KEY}' already exists — skipping save."
+        else
+          echo "GRADLE_CACHE_NEEDS_SAVE=true" >> "$GITHUB_ENV"
+          echo "::notice::Will save dependency cache as '${SAVE_KEY}'."
+        fi
+
+    # Write the build-status marker file into ~/.gradle/caches/ so the restore
+    # action can report whether a future restore is from a successful or failed
+    # build.  The file is included in the cache archive automatically because
+    # it lives inside the cached path.
+    - name: Write build-status marker
+      if: inputs.build-outcome != 'cancelled' && env.GRADLE_CACHE_NEEDS_SAVE == 'true'
+      shell: bash
+      env:
+        BUILD_OUTCOME: ${{ inputs.build-outcome }}
+      run: |
+        mkdir -p ~/.gradle/caches
+        echo "${BUILD_OUTCOME}" > ~/.gradle/caches/.gradle-cache-build-status
+        echo "::notice::Wrote build status '${BUILD_OUTCOME}' to ~/.gradle/caches/.gradle-cache-build-status"
+
+    # Invoke Gradle's built-in cache cleanup mechanism (Gradle 8+).
+    # A temporary init script is copied from the action's scripts/ directory
+    # into ~/.gradle/init.d/ and removed after the cleanup invocation.
+    # A throw-away temp directory is used as the working directory to work
+    # around https://github.com/gradle/gradle/issues/29377.
+    - name: Clean Gradle dependency cache
+      if: inputs.build-outcome != 'cancelled' && env.GRADLE_CACHE_NEEDS_SAVE == 'true'
+      shell: bash
+      env:
+        GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
+      run: |
+        if [[ -z "${GRADLE_CACHE_VERSION}" ]]; then
+          echo "::error::GRADLE_CACHE_VERSION is not set. Did you call the restore action first?"
+          exit 1
+        fi
+
+        GRADLE_VERSION="${GRADLE_CACHE_VERSION}"
+        MAJOR=$(echo "$GRADLE_VERSION" | cut -d'.' -f1)
+        MINOR=$(echo "$GRADLE_VERSION" | cut -d'.' -f2)
+
+        mkdir -p ~/.gradle/init.d
+
+        # Write the version-appropriate init script inline using printf so the
+        # YAML literal block stays well-formed (heredocs at column 0 break it).
+        # Gradle 8.8 added buildCache to the caches{} DSL; earlier versions do not.
+        if [[ "$MAJOR" -gt 8 ]] || { [[ "$MAJOR" -eq 8 ]] && [[ "$MINOR" -ge 8 ]]; }; then
+          printf '%s\n' \
+            'beforeSettings { settings -> settings.caches {' \
+            '    buildCache.removeUnusedEntriesAfterDays = 1' \
+            '    downloadedResources.removeUnusedEntriesAfterDays = 1' \
+            '    releasedWrappers.removeUnusedEntriesAfterDays = 1' \
+            '    snapshotWrappers.removeUnusedEntriesAfterDays = 1' \
+            '    createdResources.removeUnusedEntriesAfterDays = 1' \
+            '    cleanup = Cleanup.ALWAYS' \
+            '}}' \
+            > ~/.gradle/init.d/cache-settings.gradle
+        else
+          printf '%s\n' \
+            'beforeSettings { settings -> settings.caches {' \
+            '    downloadedResources.removeUnusedEntriesAfterDays = 1' \
+            '    releasedWrappers.removeUnusedEntriesAfterDays = 1' \
+            '    snapshotWrappers.removeUnusedEntriesAfterDays = 1' \
+            '    createdResources.removeUnusedEntriesAfterDays = 1' \
+            '    cleanup = Cleanup.ALWAYS' \
+            '}}' \
+            > ~/.gradle/init.d/cache-settings.gradle
+        fi
+
+        # Resolve gradlew: support both absolute and workspace-relative paths.
+        if [[ "$GRADLE_HOME_DIR" = /* ]]; then
+          GRADLEW="${GRADLE_HOME_DIR}/gradlew"
+        else
+          GRADLEW="${GITHUB_WORKSPACE}/${GRADLE_HOME_DIR}/gradlew"
+        fi
+        if [[ ! -f "$GRADLEW" ]]; then
+          echo "::warning::gradlew not found at ${GRADLEW} — skipping cache cleanup."
+          rm -f ~/.gradle/init.d/cache-settings.gradle
+          exit 0
+        fi
+
+        TMPDIR_GRADLE=$(mktemp -d)
+        touch "${TMPDIR_GRADLE}/settings.gradle"
+        touch "${TMPDIR_GRADLE}/build.gradle"
+
+        echo "Running Gradle ${GRADLE_VERSION} cache cleanup (init: ~/.gradle/init.d/cache-settings.gradle)"
+        (cd "${TMPDIR_GRADLE}" && "$GRADLEW" --no-daemon projects --info --stacktrace) \
+          || echo "::warning::Gradle cache cleanup step exited non-zero; caches may not have been fully cleaned."
+
+        rm -rf "${TMPDIR_GRADLE}"
+        rm -f ~/.gradle/init.d/cache-settings.gradle
+
+    - name: Save Gradle dependency cache
+      if: inputs.build-outcome != 'cancelled' && env.GRADLE_CACHE_NEEDS_SAVE == 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: ~/.gradle/caches
+        key: ${{ steps.save-key.outputs.save-key }}

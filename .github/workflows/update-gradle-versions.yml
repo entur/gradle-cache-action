@@ -1,0 +1,95 @@
+name: Update Gradle version coverage
+
+on:
+  schedule:
+    # Run every Monday at 08:00 UTC to catch new Gradle releases promptly.
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Check for new Gradle major/minor releases
+        id: check
+        run: |
+          python3 .github/scripts/update-gradle-versions.py
+          # Exit 0 means new workflows were written; 1 means nothing to do.
+        # A "nothing to do" exit (1) is not a failure — continue regardless.
+        continue-on-error: true
+
+      - name: Detect newly created workflow files
+        id: detect
+        run: |
+          NEW_FILES=$(git status --porcelain .github/workflows/test-gradle-*.yml \
+            | grep '^??' | awk '{print $2}' | tr '\n' ' ')
+          if [[ -n "$NEW_FILES" ]]; then
+            echo "found=true"  >> "$GITHUB_OUTPUT"
+            echo "files=${NEW_FILES}" >> "$GITHUB_OUTPUT"
+            echo "New workflow files: ${NEW_FILES}"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "No new workflow files — nothing to commit."
+          fi
+
+      - name: Commit new workflow files and open a pull request
+        if: steps.detect.outputs.found == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BRANCH="auto/gradle-version-update-$(date +%Y%m%d-%H%M%S)"
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
+          git add .github/workflows/test-gradle-*.yml
+          git commit -m "ci: add test workflows for new Gradle versions
+
+          Added by the scheduled update-gradle-versions workflow.
+          New files: ${{ steps.detect.outputs.files }}"
+
+          git push origin "$BRANCH"
+
+          # Collect the new Gradle versions from the filenames for the PR body.
+          VERSIONS=$(git diff HEAD~1 --name-only \
+            | grep 'test-gradle-.*\.yml' \
+            | sed 's|.github/workflows/test-gradle-||;s|\.yml||;s|-|.|g' \
+            | sort -V \
+            | sed 's/^/- Gradle /' \
+            | tr '\n' '\n')
+
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "ci: add test workflows for new Gradle versions" \
+            --body "## New Gradle version coverage
+
+          The scheduled [update-gradle-versions](${{ github.server_url }}/${{ github.repository }}/actions/workflows/update-gradle-versions.yml) workflow detected new Gradle major/minor releases not yet covered by a test workflow.
+
+          ### Added workflows
+
+          ${VERSIONS}
+
+          ### What each workflow does
+
+          1. Downloads the specific Gradle distribution and regenerates the wrapper.
+          2. Restores the Gradle wrapper and dependency caches.
+          3. Builds and tests the example project.
+          4. Saves the caches (including a \`.gradle-cache-build-status\` marker).
+          5. Deletes local cache directories, restores again, and verifies that
+             custom sentinel files round-trip correctly through the cache.
+
+          ---
+          *This PR was opened automatically — please review and merge.*"

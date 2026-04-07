@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""
+Check https://services.gradle.org/versions/all for Gradle releases that are
+not yet covered by a test workflow, and generate the missing workflow files.
+
+Exit codes:
+  0 – one or more new workflow files were written
+  1 – everything is already up to date (no new files)
+"""
+
+import json
+import re
+import sys
+import urllib.request
+from pathlib import Path
+from textwrap import dedent
+
+VERSIONS_API = "https://services.gradle.org/versions/all"
+WORKFLOWS_DIR = Path(".github/workflows")
+MIN_MAJOR = 8  # Gradle 8+ required for built-in cache cleanup
+
+# Java version to use when running Gradle in CI.
+# Gradle 9+ mandates Java 17 as minimum; Java 21 is the safest current LTS.
+# This mapping can be updated here without touching individual workflow files.
+def java_version_for(major: int, minor: int) -> str:
+    return "21"
+
+
+# ── version helpers ──────────────────────────────────────────────────────────
+
+def is_stable(v: dict) -> bool:
+    """Return True for final releases only (no snapshot, nightly, RC, milestone)."""
+    version_str = v.get("version", "")
+    return (
+        not v.get("snapshot")
+        and not v.get("nightly")
+        and not v.get("releaseNightly")
+        and bool(version_str)
+        # RC/milestone releases have patterns like 8.0-rc-1 or 9.0-milestone-1
+        and re.fullmatch(r"\d+\.\d+(\.\d+)?", version_str) is not None
+    )
+
+
+def parse_version(version_str: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in version_str.split("."))
+
+
+def latest_patch_per_minor(versions: list[dict]) -> dict[tuple[int, int], str]:
+    """
+    Return {(major, minor): latest_patch_version_string} for all stable
+    releases at or above MIN_MAJOR.
+    """
+    latest: dict[tuple[int, int], str] = {}
+    for v in versions:
+        ver = v["version"]
+        parts = ver.split(".")
+        if len(parts) < 2:
+            continue
+        major, minor = int(parts[0]), int(parts[1])
+        if major < MIN_MAJOR:
+            continue
+        key = (major, minor)
+        if key not in latest or parse_version(ver) > parse_version(latest[key]):
+            latest[key] = ver
+    return latest
+
+
+def covered_versions() -> set[tuple[int, int]]:
+    """Return the (major, minor) pairs that already have a test workflow."""
+    covered: set[tuple[int, int]] = set()
+    for f in WORKFLOWS_DIR.glob("test-gradle-*.yml"):
+        m = re.fullmatch(r"test-gradle-(\d+)-(\d+)\.yml", f.name)
+        if m:
+            covered.add((int(m.group(1)), int(m.group(2))))
+    return covered
+
+
+# ── workflow template ────────────────────────────────────────────────────────
+
+def workflow_content(major: int, minor: int, version: str) -> str:
+    java = java_version_for(major, minor)
+    # ${{ … }} must remain literal in the output YAML; using a placeholder
+    # avoids accidental Python format() expansion.
+    GH = "${{{{ {0} }}}}"  # renders as ${{ <expr> }}
+
+    return dedent(f"""\
+        name: Test Gradle {version}
+
+        on:
+          push:
+            branches: ["main"]
+          pull_request:
+
+        jobs:
+          test:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v6
+
+              - name: Set up Java {java}
+                uses: actions/setup-java@v5
+                with:
+                  distribution: temurin
+                  java-version: "{java}"
+
+              # Download Gradle {version} and regenerate the wrapper so the wrapper
+              # properties and jar exactly match this release.
+              - name: Set up Gradle {version} wrapper
+                run: |
+                  curl -sL "https://services.gradle.org/distributions/gradle-{version}-bin.zip" -o /tmp/gradle.zip
+                  unzip -q /tmp/gradle.zip -d /tmp/gradle-dist
+                  /tmp/gradle-dist/gradle-{version}/bin/gradle \\\\
+                    -p example wrapper --gradle-version {version} --distribution-type bin
+                  rm -rf /tmp/gradle.zip /tmp/gradle-dist
+                  chmod +x example/gradlew
+
+              # ── First restore ─────────────────────────────────────────────────────
+              - name: Restore Gradle cache
+                uses: ./restore
+                with:
+                  gradle-home-directory: example
+
+              - name: Build and test
+                run: ./gradlew build
+                working-directory: example
+
+              # Plant sentinel files in both cache directories.  After the cache is
+              # saved and the local directories are deleted, a second restore must
+              # bring them back for the verification step to pass.
+              - name: Add custom files to Gradle cache directories
+                run: |
+                  mkdir -p ~/.gradle/caches ~/.gradle/wrapper/dists
+                  echo "gradle-{version}-deps-marker" > ~/.gradle/caches/.test-marker
+                  echo "gradle-{version}-wrapper-marker" > ~/.gradle/wrapper/dists/.test-marker
+
+              - name: Save Gradle cache
+                if: always()
+                uses: ./save
+                with:
+                  gradle-home-directory: example
+                  build-outcome: {GH.format("job.status")}
+
+              # Wipe the local Gradle home so the second restore starts from scratch.
+              - name: Delete local Gradle cache directories
+                run: rm -rf ~/.gradle/caches ~/.gradle/wrapper/dists
+
+              # ── Second restore ────────────────────────────────────────────────────
+              - name: Restore Gradle cache (verify round-trip)
+                uses: ./restore
+                with:
+                  gradle-home-directory: example
+
+              - name: Verify custom files survived the save/delete/restore cycle
+                run: |
+                  FAIL=0
+
+                  if [[ ! -f ~/.gradle/wrapper/dists/.test-marker ]]; then
+                    echo "::error::Wrapper cache marker not found after restore — wrapper cache round-trip failed."
+                    FAIL=1
+                  else
+                    echo "Wrapper cache marker: $(cat ~/.gradle/wrapper/dists/.test-marker)"
+                  fi
+
+                  if [[ ! -f ~/.gradle/caches/.test-marker ]]; then
+                    echo "::error::Dependency cache marker not found after restore — dependency cache round-trip failed."
+                    FAIL=1
+                  else
+                    echo "Dependency cache marker: $(cat ~/.gradle/caches/.test-marker)"
+                  fi
+
+                  exit $FAIL
+        """)
+
+
+# ── main ─────────────────────────────────────────────────────────────────────
+
+def main() -> int:
+    print(f"Fetching Gradle version list from {VERSIONS_API} …")
+    with urllib.request.urlopen(VERSIONS_API, timeout=30) as resp:
+        all_versions: list[dict] = json.loads(resp.read())
+
+    stable = [v for v in all_versions if is_stable(v)]
+    print(f"  {len(stable)} stable releases found (out of {len(all_versions)} total)")
+
+    latest = latest_patch_per_minor(stable)
+    already_covered = covered_versions()
+
+    new_minors = sorted(
+        [(major, minor) for (major, minor) in latest if (major, minor) not in already_covered]
+    )
+
+    if not new_minors:
+        print("Everything is up to date — no new Gradle versions to add.")
+        return 1  # signal "nothing changed" to the calling workflow
+
+    print(f"\n{len(new_minors)} new major/minor version(s) found:")
+    for (major, minor) in new_minors:
+        version = latest[(major, minor)]
+        filename = f"test-gradle-{major}-{minor}.yml"
+        content = workflow_content(major, minor, version)
+        (WORKFLOWS_DIR / filename).write_text(content)
+        print(f"  + {filename}  (Gradle {version}, Java {java_version_for(major, minor)})")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
