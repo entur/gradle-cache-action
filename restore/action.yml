@@ -31,6 +31,7 @@ runs:
       env:
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
         CACHE_PREFIX: ${{ inputs.cache-prefix }}
+        ACTION_REF: ${{ github.action_ref || 'local' }}
       run: |
         WRAPPER_PROPS="${GRADLE_HOME_DIR}/gradle/wrapper/gradle-wrapper.properties"
         if [[ ! -f "$WRAPPER_PROPS" ]]; then
@@ -74,7 +75,6 @@ runs:
         # Compute dependency cache keys in full so the restore step can reference
         # them directly as env vars rather than assembling them from multiple
         # context expressions.
-        ACTION_REF="${GITHUB_ACTION_REF:-local}"
         KEY_BASE="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_VERSION}-${CACHE_PREFIX}"
         echo "GRADLE_DEP_CACHE_KEY=${KEY_BASE}-${BUILD_HASH}"              >> "$GITHUB_ENV"
         echo "GRADLE_DEP_CACHE_RESTORE_KEY_HASH=${KEY_BASE}-${BUILD_HASH}-" >> "$GITHUB_ENV"
