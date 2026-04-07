@@ -21,14 +21,14 @@ steps:
       java-version: "25"
 
   - name: Restore Gradle cache
-    uses: entur/free-gradle-cache-action/restore@v1
+    uses: entur/gradle-cache-action/restore@v1
 
   - name: Build
     run: ./gradlew build
 
   - name: Save Gradle cache
     if: always()                  # run even on failure so failed-build caches are stored
-    uses: entur/free-gradle-cache-action/save@v1
+    uses: entur/gradle-cache-action/save@v1
     with:
       build-outcome: ${{ job.status }}
 ```
