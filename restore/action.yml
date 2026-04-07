@@ -30,6 +30,7 @@ runs:
       shell: bash
       env:
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
+        CACHE_PREFIX: ${{ inputs.cache-prefix }}
       run: |
         WRAPPER_PROPS="${GRADLE_HOME_DIR}/gradle/wrapper/gradle-wrapper.properties"
         if [[ ! -f "$WRAPPER_PROPS" ]]; then
@@ -70,6 +71,15 @@ runs:
         echo "GRADLE_CACHE_BUILD_HASH=${BUILD_HASH}" >> "$GITHUB_ENV"
         echo "::notice::Gradle ${GRADLE_VERSION} — build hash ${BUILD_HASH}"
 
+        # Compute dependency cache keys in full so the restore step can reference
+        # them directly as env vars rather than assembling them from multiple
+        # context expressions.
+        ACTION_REF="${GITHUB_ACTION_REF:-local}"
+        KEY_BASE="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_VERSION}-${CACHE_PREFIX}"
+        echo "GRADLE_DEP_CACHE_KEY=${KEY_BASE}-${BUILD_HASH}"              >> "$GITHUB_ENV"
+        echo "GRADLE_DEP_CACHE_RESTORE_KEY_HASH=${KEY_BASE}-${BUILD_HASH}-" >> "$GITHUB_ENV"
+        echo "GRADLE_DEP_CACHE_RESTORE_KEY_PREFIX=${KEY_BASE}-"             >> "$GITHUB_ENV"
+
     # Restore the wrapper cache first so gradlew works for the build and for
     # the cleanup invocation in the save action. Exact key only — never restore
     # a different Gradle version on a cache miss.
@@ -101,10 +111,10 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ~/.gradle/caches
-        key: gradle-deps-${{ runner.os }}-${{ github.action_ref || 'local' }}-${{ env.GRADLE_CACHE_VERSION }}-${{ inputs.cache-prefix }}-${{ env.GRADLE_CACHE_BUILD_HASH }}
+        key: ${{ env.GRADLE_DEP_CACHE_KEY }}
         restore-keys: |
-          gradle-deps-${{ runner.os }}-${{ github.action_ref || 'local' }}-${{ env.GRADLE_CACHE_VERSION }}-${{ inputs.cache-prefix }}-${{ env.GRADLE_CACHE_BUILD_HASH }}-
-          gradle-deps-${{ runner.os }}-${{ github.action_ref || 'local' }}-${{ env.GRADLE_CACHE_VERSION }}-${{ inputs.cache-prefix }}-
+          ${{ env.GRADLE_DEP_CACHE_RESTORE_KEY_HASH }}
+          ${{ env.GRADLE_DEP_CACHE_RESTORE_KEY_PREFIX }}
 
     # Check the marker file written by the save action into ~/.gradle/caches/.
     # It records whether the restored cache came from a successful or failed build

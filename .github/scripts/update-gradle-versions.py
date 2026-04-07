@@ -22,10 +22,19 @@ WORKFLOWS_DIR = Path(".github/workflows")
 EXAMPLES_DIR  = Path("examples")
 MIN_MAJOR = 8  # Gradle 8+ required for built-in cache cleanup
 
-# Java version to use when running Gradle in CI.
-# Gradle 9+ mandates Java 17 as minimum; Java 21 is the safest current LTS.
+# Java version to use when running Gradle in CI (runner JDK).
+# All supported versions run fine on Java 21.
 def java_version_for(major: int, minor: int) -> str:
     return "21"
+
+
+# Java language version to target in the example build.gradle.kts (toolchain).
+# Gradle 8.0-8.3 predate Java 21 GA (Sep 2023) and do not support it as a
+# toolchain compilation target; use Java 17 (LTS) for those versions.
+def java_toolchain_version_for(major: int, minor: int) -> int:
+    if major == 8 and minor < 4:
+        return 17
+    return 21
 
 
 # ── version helpers ──────────────────────────────────────────────────────────
@@ -78,35 +87,36 @@ def covered_versions() -> set[tuple[int, int]]:
 
 # ── example project templates ─────────────────────────────────────────────────
 
-BUILD_GRADLE = """\
-plugins {
+def build_gradle(toolchain_java: int) -> str:
+    return f"""\
+plugins {{
     java
     application
-}
+}}
 
-repositories {
+repositories {{
     mavenCentral()
-}
+}}
 
-dependencies {
+dependencies {{
     implementation("com.google.guava:guava:33.2.1-jre")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-}
+}}
 
-application {
+application {{
     mainClass = "com.example.App"
-}
+}}
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
+java {{
+    toolchain {{
+        languageVersion = JavaLanguageVersion.of({toolchain_java})
+    }}
+}}
 
-tasks.test {
+tasks.test {{
     useJUnitPlatform()
-}
+}}
 """
 
 APP_JAVA = """\
@@ -168,7 +178,7 @@ def create_example(major: int, minor: int, version: str) -> str:
     (ex_dir / "settings.gradle.kts").write_text(
         f'rootProject.name = "gradle-cache-action-{major}.{minor}"\n'
     )
-    (ex_dir / "build.gradle.kts").write_text(BUILD_GRADLE)
+    (ex_dir / "build.gradle.kts").write_text(build_gradle(java_toolchain_version_for(major, minor)))
     (ex_dir / "src" / "main" / "java" / "com" / "example" / "App.java").write_text(APP_JAVA)
     (ex_dir / "src" / "test" / "java" / "com" / "example" / "AppTest.java").write_text(APP_TEST_JAVA)
 
