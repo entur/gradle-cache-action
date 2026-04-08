@@ -57,12 +57,11 @@ steps:
 | `gradle-version` | Gradle version extracted from `gradle-wrapper.properties`. |
 
 
-## How it works.
+## How it works
 
 - Restores the **wrapper cache** (`~/.gradle/wrapper/dists`) first, using an exact-match key that includes the Gradle version — a stale version is never restored on cache miss.
 - Restores the **dependency cache** (`~/.gradle/caches`) with a key that includes the Gradle version, a configurable prefix, and a hash of all build files. Falls back to a failed-build cache for the same hash, then to any prior cache for the same prefix.
 - Caches from **failed builds** are saved under a separate `…-failed` key. Subsequent runs prefer a successful-build cache but will still use a failed-build cache as a warm start (so dependencies are not re-downloaded).
-- Each saved cache includes a **`.gradle-cache-build-status`** marker file (`success` or `failure`) so the restore action can log and react to the provenance of what it restores.
 - In the save step, runs Gradle's **built-in cache cleanup** (Gradle 8+ only) before storing the dependency cache, ensuring ephemeral or unused files are evicted rather than accumulated.
 - Saves the dependency cache only when the key to be written differs from what was restored, skipping redundant writes.
 - Skips all cache writes when the job is **cancelled**.
