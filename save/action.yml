@@ -61,6 +61,7 @@ runs:
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
         BUILD_OUTCOME: ${{ inputs.build-outcome }}
         ACTION_REF: ${{ github.action_ref || 'local' }}
+        CACHE_PREFIX: ${{ inputs.cache-prefix }}
       run: |
         CURRENT_HASH=$(find "${GRADLE_HOME_DIR}" \
           \( -name "*.gradle" \
@@ -75,9 +76,9 @@ runs:
           | cut -c1-64)
 
         if [[ "$BUILD_OUTCOME" == "success" ]]; then
-          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${{ inputs.cache-prefix }}-${CURRENT_HASH}"
+          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${CACHE_PREFIX}-${CURRENT_HASH}"
         else
-          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${{ inputs.cache-prefix }}-${CURRENT_HASH}-failed"
+          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${CACHE_PREFIX}-${CURRENT_HASH}-failed"
         fi
 
         echo "save-key=${SAVE_KEY}" >> "$GITHUB_OUTPUT"
