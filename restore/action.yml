@@ -38,7 +38,7 @@ runs:
       run: |
         if [[ "$GRADLE_WRAPPER_CACHE_HIT" != "true" ]]; then
           mkdir -p "$GRADLE_HOME_DIR/.gradle"
-          echo YES > $GRADLE_HOME_DIR/.gradle/wrapper-save-always
+          echo YES > "$GRADLE_HOME_DIR/.gradle/wrapper-save-always"
         fi
 
     - name: Compute build files hash
@@ -64,7 +64,7 @@ runs:
           | cut -c1-64)
         
         mkdir -p "$GRADLE_HOME_DIR/.gradle"
-        echo "${BUILD_HASH}" > $GRADLE_HOME_DIR/.gradle/build-hash
+        echo "${BUILD_HASH}" > "$GRADLE_HOME_DIR/.gradle/build-hash"
 
     #
     # Restore-key priority:

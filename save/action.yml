@@ -100,12 +100,7 @@ runs:
             > ~/.gradle/init.d/cache-settings.gradle
         fi
 
-        # Resolve gradlew: support both absolute and workspace-relative paths.
-        if [[ "$GRADLE_HOME_DIR" = /* ]]; then
-          GRADLEW="${GRADLE_HOME_DIR}/gradlew"
-        else
-          GRADLEW="${GITHUB_WORKSPACE}/${GRADLE_HOME_DIR}/gradlew"
-        fi
+        GRADLEW="${GITHUB_WORKSPACE}/${GRADLE_HOME_DIR}/gradlew"
         if [[ ! -f "$GRADLEW" ]]; then
           echo "::warning::gradlew not found at ${GRADLEW} — skipping cache cleanup."
           rm -f ~/.gradle/init.d/cache-settings.gradle
