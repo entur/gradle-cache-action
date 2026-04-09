@@ -54,7 +54,7 @@ steps:
 
 - Restores the **wrapper cache** (`~/.gradle/wrapper/dists`) first
 - Restores the **dependency cache** (`~/.gradle/caches`) with a key that includes the Gradle version, a configurable prefix, and a hash of all build files.
-- Saves the dependency cache when build files changes. Runs Gradle's **built-in cache cleanup** (Gradle 8+ only) first.
+- Saves the **dependency cache** when build files changes. Runs Gradle's **built-in cache cleanup** (Gradle 8+ only) first.
 
 # License
 [European Union Public Licence v1.2](https://eupl.eu/).
