@@ -68,9 +68,9 @@ runs:
 
     #
     # Restore-key priority:
-    #   1. key                     → a previous successful build with this exact hash
-    #   2. key + failure-build     → a failed build with this exact hash
-    #   3. otherwise               → any prior build for the same action prefix/action/gradle version
+    #   1. key                      → a previous successful build with this exact hash
+    #   2. key + -failure-build     → a failed build with this exact hash
+    #   3. otherwise                → any prior build for the same action prefix/action/gradle version
 
     - name: Restore Gradle dependency cache
       id: restore-dependencies
