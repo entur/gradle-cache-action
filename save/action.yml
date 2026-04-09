@@ -33,77 +33,13 @@ runs:
       run: echo "::notice::Job was cancelled — skipping cache save."
 
     # Save the wrapper distribution so subsequent runs skip the download even
-    # when the build failed.  actions/cache/save is a no-op if the key already
-    # exists in the cache.
+    # when the build failed.
     - name: Save Gradle wrapper cache
-      if: inputs.build-outcome != 'cancelled' && env.GRADLE_WRAPPER_CACHE_HIT != 'true'
+      if: inputs.build-outcome != 'cancelled' && hashFiles(format('{0}/.gradle/wrapper-save-always', inputs.gradle-home-directory)) != ''
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/wrapper/dists
-        key: gradle-wrapper-${{ runner.os }}-${{ env.GRADLE_CACHE_VERSION }}
-
-    # Re-hash build files (they may have been generated/modified during the build)
-    # and compute the key we would save under for this build outcome:
-    #   success → gradle-deps-…-{action-ref}-{gradle-version}-{prefix}-{hash}
-    #   failure → gradle-deps-…-{action-ref}-{gradle-version}-{prefix}-{hash}-failed
-    #
-    # Including the action ref means bumping the action version automatically
-    # busts all caches, which is useful when the action changes what it stores.
-    #
-    # NEEDS_SAVE is true when the key we intend to write differs from what was
-    # restored — i.e. there is no existing entry that already represents this
-    # exact (action-ref × hash × outcome) combination.
-    - name: Compute save key and decide whether to save
-      if: inputs.build-outcome != 'cancelled'
-      id: save-key
-      shell: bash
-      env:
-        GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
-        BUILD_OUTCOME: ${{ inputs.build-outcome }}
-        ACTION_REF: ${{ github.action_ref || 'local' }}
-        CACHE_PREFIX: ${{ inputs.cache-prefix }}
-      run: |
-        CURRENT_HASH=$(find "${GRADLE_HOME_DIR}" \
-          \( -name "*.gradle" \
-          -o -name "*.gradle.kts" \
-          -o -name "gradle.properties" \
-          -o -name "gradle-wrapper.properties" \
-          -o -name "*.versions.toml" \) \
-          -type f -print0 2>/dev/null \
-          | sort -z \
-          | xargs -0 sha256sum \
-          | sha256sum \
-          | cut -c1-64)
-
-        if [[ "$BUILD_OUTCOME" == "success" ]]; then
-          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${CACHE_PREFIX}-${CURRENT_HASH}"
-        else
-          SAVE_KEY="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_CACHE_VERSION}-${CACHE_PREFIX}-${CURRENT_HASH}-failed"
-        fi
-
-        echo "save-key=${SAVE_KEY}" >> "$GITHUB_OUTPUT"
-
-        if [[ "$SAVE_KEY" == "$GRADLE_DEP_CACHE_RESTORED_KEY" ]]; then
-          echo "GRADLE_CACHE_NEEDS_SAVE=false" >> "$GITHUB_ENV"
-          echo "::notice::Dependency cache '${SAVE_KEY}' already exists — skipping save."
-        else
-          echo "GRADLE_CACHE_NEEDS_SAVE=true" >> "$GITHUB_ENV"
-          echo "::notice::Will save dependency cache as '${SAVE_KEY}'."
-        fi
-
-    # Write the build-status marker file into ~/.gradle/caches/ so the restore
-    # action can report whether a future restore is from a successful or failed
-    # build.  The file is included in the cache archive automatically because
-    # it lives inside the cached path.
-    - name: Write build-status marker
-      if: inputs.build-outcome != 'cancelled' && env.GRADLE_CACHE_NEEDS_SAVE == 'true'
-      shell: bash
-      env:
-        BUILD_OUTCOME: ${{ inputs.build-outcome }}
-      run: |
-        mkdir -p ~/.gradle/caches
-        echo "${BUILD_OUTCOME}" > ~/.gradle/caches/.gradle-cache-build-status
-        echo "::notice::Wrote build status '${BUILD_OUTCOME}' to ~/.gradle/caches/.gradle-cache-build-status"
+        key: gradle-wrapper-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
 
     # Invoke Gradle's built-in cache cleanup mechanism (Gradle 8+).
     # A temporary init script is copied from the action's scripts/ directory
@@ -111,18 +47,29 @@ runs:
     # A throw-away temp directory is used as the working directory to work
     # around https://github.com/gradle/gradle/issues/29377.
     - name: Clean Gradle dependency cache
-      if: inputs.build-outcome != 'cancelled' && env.GRADLE_CACHE_NEEDS_SAVE == 'true'
+      if: inputs.build-outcome != 'cancelled' && (hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != '' || (inputs.build-outcome == 'success' && hashFiles(format('{0}/.gradle/.dependencies-save-on-success', inputs.gradle-home-directory)) != ''))
       shell: bash
       env:
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
       run: |
-        if [[ -z "${GRADLE_CACHE_VERSION}" ]]; then
-          echo "::error::GRADLE_CACHE_VERSION is not set. Did you call the restore action first?"
+        WRAPPER_PROPS="${GRADLE_HOME_DIR}/gradle/wrapper/gradle-wrapper.properties"
+        if [[ ! -f "$WRAPPER_PROPS" ]]; then
+          echo "::error::Could not find gradle-wrapper.properties at ${WRAPPER_PROPS}"
           exit 1
         fi
 
-        GRADLE_VERSION="${GRADLE_CACHE_VERSION}"
+        GRADLE_VERSION=$(sed -n 's/.*gradle-\([0-9][0-9.]*\)-\(bin\|all\).*/\1/p' "$WRAPPER_PROPS")
+        if [[ -z "$GRADLE_VERSION" ]]; then
+          echo "::error::Could not extract Gradle version from ${WRAPPER_PROPS}"
+          exit 1
+        fi
+
         MAJOR=$(echo "$GRADLE_VERSION" | cut -d'.' -f1)
+        if [[ "$MAJOR" -lt 8 ]]; then
+          echo "::error::Gradle ${GRADLE_VERSION} is not supported. Only Gradle 8+ supports built-in cache cleanup."
+          exit 0
+        fi
+
         MINOR=$(echo "$GRADLE_VERSION" | cut -d'.' -f2)
 
         mkdir -p ~/.gradle/init.d
@@ -176,9 +123,16 @@ runs:
         rm -rf "${TMPDIR_GRADLE}"
         rm -f ~/.gradle/init.d/cache-settings.gradle
 
-    - name: Save Gradle dependency cache
-      if: inputs.build-outcome != 'cancelled' && env.GRADLE_CACHE_NEEDS_SAVE == 'true'
+    - name: Save Gradle dependency cache for succesful build
+      if: inputs.build-outcome == 'success' && (hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != '' || hashFiles(format('{0}/.gradle/.dependencies-on-success', inputs.gradle-home-directory)) != '')
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/caches
-        key: ${{ steps.save-key.outputs.save-key }}
+        key: gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}
+
+    - name: Save Gradle dependency cache for failed build.
+      if: inputs.build-outcome == 'failure' && hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != ''
+      uses: actions/cache/save@v5
+      with:
+        path: ~/.gradle/caches
+        key: gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}-failure-build
