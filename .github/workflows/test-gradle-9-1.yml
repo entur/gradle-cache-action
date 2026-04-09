@@ -34,7 +34,6 @@ jobs:
         with:
           gradle-home-directory: examples/gradle-9-1
           build-outcome: ${{ job.status }}
-          dep-cache-restored-key: ${{ steps.restore.outputs.dep-cache-restored-key }}
 
       # Wipe the local Gradle home so the second restore starts from scratch.
       - name: Delete local Gradle cache directories

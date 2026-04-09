@@ -22,12 +22,6 @@ inputs:
       Accepted values: success, failure, cancelled.
       When cancelled the save is skipped entirely.
     required: true
-  dep-cache-restored-key:
-    description: >
-      The dependency cache key that was matched during restore. Pass the restore
-      action's `dep-cache-restored-key` output. Used to skip saving an identical
-      cache entry.
-    required: true
 
 runs:
   using: composite
@@ -88,8 +82,9 @@ runs:
         ACTION_REF: ${{ github.action_ref || 'local' }}
         CACHE_PREFIX: ${{ inputs.cache-prefix }}
         GRADLE_CACHE_VERSION: ${{ steps.read-gradle-version.outputs.gradle-version }}
-        GRADLE_DEP_CACHE_RESTORED_KEY: ${{ inputs.dep-cache-restored-key }}
       run: |
+        GRADLE_DEP_CACHE_RESTORED_KEY=$(cat ~/.gradle/.dep-cache-restored-key 2>/dev/null || echo "")
+
         CURRENT_HASH=$(find "${GRADLE_HOME_DIR}" \
           \( -name "*.gradle" \
           -o -name "*.gradle.kts" \
