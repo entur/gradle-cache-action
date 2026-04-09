@@ -34,7 +34,6 @@ jobs:
         with:
           gradle-home-directory: examples/gradle-8-6
           build-outcome: ${{ job.status }}
-          wrapper-cache-hit: ${{ steps.restore.outputs.wrapper-cache-hit }}
           dep-cache-restored-key: ${{ steps.restore.outputs.dep-cache-restored-key }}
 
       # Wipe the local Gradle home so the second restore starts from scratch.

@@ -95,12 +95,14 @@ runs:
       id: record-wrapper-hit
       shell: bash
       env:
+        GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
         GRADLE_WRAPPER_CACHE_HIT: ${{ steps.restore-wrapper.outputs.cache-hit }}
       run: |
         if [[ "$GRADLE_WRAPPER_CACHE_HIT" == "true" ]]; then
           mkdir -p ~/.gradle
-          touch ~/.gradle/.wrapper-cache-hit
-          echo "::notice::Wrapper cache hit — marker written to ~/.gradle/.wrapper-cache-hit"
+          WRAPPER_PROPS="${GRADLE_HOME_DIR}/gradle/wrapper/gradle-wrapper.properties"
+          sha256sum "$WRAPPER_PROPS" | cut -c1-64 > ~/.gradle/.wrapper-cache-hit
+          echo "::notice::Wrapper cache hit — hash written to ~/.gradle/.wrapper-cache-hit"
         fi
 
     # Restore the dependency cache.

@@ -52,8 +52,16 @@ runs:
         GRADLE_VERSION=$(sed -n 's/.*gradle-\([0-9][0-9.]*\)-\(bin\|all\).*/\1/p' "$WRAPPER_PROPS")
         echo "gradle-version=${GRADLE_VERSION}" >> "$GITHUB_OUTPUT"
 
+        WRAPPER_HASH=$(sha256sum "$WRAPPER_PROPS" | cut -c1-64)
+        MARKER_FILE=~/.gradle/.wrapper-cache-hit
+        if [[ -f "$MARKER_FILE" ]] && [[ "$(cat "$MARKER_FILE")" == "$WRAPPER_HASH" ]]; then
+          echo "wrapper-cache-hit=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "wrapper-cache-hit=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Save Gradle wrapper cache
-      if: inputs.build-outcome != 'cancelled' && inputs.wrapper-cache-hit != 'true'
+      if: inputs.build-outcome != 'cancelled' && steps.read-gradle-version.outputs.wrapper-cache-hit != 'true'
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/wrapper/dists
