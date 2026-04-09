@@ -17,11 +17,6 @@ inputs:
     required: false
     default: "default"
 
-outputs:
-  gradle-version:
-    description: Gradle version extracted from gradle-wrapper.properties
-    value: ${{ steps.read-gradle-version.outputs.gradle-version }}
-
 runs:
   using: composite
   steps:
@@ -41,8 +36,8 @@ runs:
         GRADLE_WRAPPER_CACHE_HIT: ${{ steps.restore-wrapper.outputs.cache-hit }}
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
       run: |
-        if [[ "GRADLE_WRAPPER_CACHE_HIT" != "true" ]]; then
-          mkdir -p $GRADLE_HOME_DIR/.gradle
+        if [[ "$GRADLE_WRAPPER_CACHE_HIT" != "true" ]]; then
+          mkdir -p "$GRADLE_HOME_DIR/.gradle"
           echo YES > $GRADLE_HOME_DIR/.gradle/wrapper-save-always
         fi
 
@@ -95,7 +90,7 @@ runs:
         DEPENDENCIES_CACHE_MATCHED_KEY: ${{ steps.restore-dependencies.outputs.cache-matched-key }}
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
       run: |
-        mkdir -p $GRADLE_HOME_DIR/.gradle
+        mkdir -p "$GRADLE_HOME_DIR/.gradle"
         if [[ "$DEPENDENCIES_CACHE_HIT" == "true" ]]; then
           # got a cache hit for the same build files, for a successful build
           echo YES > $GRADLE_HOME_DIR/.gradle/.dependencies-save-never
