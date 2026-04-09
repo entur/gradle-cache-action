@@ -19,6 +19,7 @@ jobs:
 
       # ── First restore ─────────────────────────────────────────────────────
       - name: Restore Gradle cache
+        id: restore
         uses: ./restore
         with:
           gradle-home-directory: examples/gradle-8-11
@@ -33,6 +34,9 @@ jobs:
         with:
           gradle-home-directory: examples/gradle-8-11
           build-outcome: ${{ job.status }}
+          gradle-version: ${{ steps.restore.outputs.gradle-version }}
+          wrapper-cache-hit: ${{ steps.restore.outputs.wrapper-cache-hit }}
+          dep-cache-restored-key: ${{ steps.restore.outputs.dep-cache-restored-key }}
 
       # Wipe the local Gradle home so the second restore starts from scratch.
       - name: Delete local Gradle cache directories

@@ -21,6 +21,12 @@ outputs:
   gradle-version:
     description: Gradle version extracted from gradle-wrapper.properties
     value: ${{ steps.read-gradle-version.outputs.gradle-version }}
+  wrapper-cache-hit:
+    description: Whether the Gradle wrapper cache was restored ('true' or 'false')
+    value: ${{ steps.record-wrapper-hit.outputs.wrapper-cache-hit }}
+  dep-cache-restored-key:
+    description: The cache key that was matched when restoring the dependency cache
+    value: ${{ steps.check-cache-status.outputs.dep-cache-restored-key }}
 
 runs:
   using: composite
@@ -52,7 +58,6 @@ runs:
         fi
 
         echo "gradle-version=${GRADLE_VERSION}" >> "$GITHUB_OUTPUT"
-        echo "GRADLE_CACHE_VERSION=${GRADLE_VERSION}" >> "$GITHUB_ENV"
 
         # Hash all build-defining files for the dependency cache key.
         # Use -print0 / sort -z / xargs -0 to handle filenames with spaces.
@@ -69,16 +74,15 @@ runs:
           | xargs -0 sha256sum \
           | sha256sum \
           | cut -c1-64)
-        echo "GRADLE_CACHE_BUILD_HASH=${BUILD_HASH}" >> "$GITHUB_ENV"
         echo "::notice::Gradle ${GRADLE_VERSION} — build hash ${BUILD_HASH}"
 
         # Compute dependency cache keys in full so the restore step can reference
-        # them directly as env vars rather than assembling them from multiple
+        # them directly as step outputs rather than assembling them from multiple
         # context expressions.
         KEY_BASE="gradle-deps-${RUNNER_OS}-${ACTION_REF}-${GRADLE_VERSION}-${CACHE_PREFIX}"
-        echo "GRADLE_DEP_CACHE_KEY=${KEY_BASE}-${BUILD_HASH}"              >> "$GITHUB_ENV"
-        echo "GRADLE_DEP_CACHE_RESTORE_KEY_HASH=${KEY_BASE}-${BUILD_HASH}-" >> "$GITHUB_ENV"
-        echo "GRADLE_DEP_CACHE_RESTORE_KEY_PREFIX=${KEY_BASE}-"             >> "$GITHUB_ENV"
+        echo "dep-cache-key=${KEY_BASE}-${BUILD_HASH}"               >> "$GITHUB_OUTPUT"
+        echo "dep-cache-restore-key-hash=${KEY_BASE}-${BUILD_HASH}-" >> "$GITHUB_OUTPUT"
+        echo "dep-cache-restore-key-prefix=${KEY_BASE}-"             >> "$GITHUB_OUTPUT"
 
     # Restore the wrapper cache first so gradlew works for the build and for
     # the cleanup invocation in the save action. Exact key only — never restore
@@ -88,14 +92,15 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ~/.gradle/wrapper/dists
-        key: gradle-wrapper-${{ runner.os }}-${{ env.GRADLE_CACHE_VERSION }}
+        key: gradle-wrapper-${{ runner.os }}-${{ steps.read-gradle-version.outputs.gradle-version }}
 
     - name: Record wrapper cache hit
+      id: record-wrapper-hit
       shell: bash
       env:
         GRADLE_WRAPPER_CACHE_HIT: ${{ steps.restore-wrapper.outputs.cache-hit }}
       run: |
-        echo "GRADLE_WRAPPER_CACHE_HIT=$GRADLE_WRAPPER_CACHE_HIT" >> "$GITHUB_ENV"
+        echo "wrapper-cache-hit=$GRADLE_WRAPPER_CACHE_HIT" >> "$GITHUB_OUTPUT"
 
     # Restore the dependency cache.
     #
@@ -113,31 +118,29 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ~/.gradle/caches
-        key: ${{ env.GRADLE_DEP_CACHE_KEY }}
+        key: ${{ steps.read-gradle-version.outputs.dep-cache-key }}
         restore-keys: |
-          ${{ env.GRADLE_DEP_CACHE_RESTORE_KEY_HASH }}
-          ${{ env.GRADLE_DEP_CACHE_RESTORE_KEY_PREFIX }}
+          ${{ steps.read-gradle-version.outputs.dep-cache-restore-key-hash }}
+          ${{ steps.read-gradle-version.outputs.dep-cache-restore-key-prefix }}
 
     # Check the marker file written by the save action into ~/.gradle/caches/.
     # It records whether the restored cache came from a successful or failed build
     # so the save action knows whether to force a fresh save.
     - name: Check restored cache build status
+      id: check-cache-status
       shell: bash
       env:
         RESTORED_KEY: ${{ steps.restore-deps.outputs.cache-matched-key }}
       run: |
-        echo "GRADLE_DEP_CACHE_RESTORED_KEY=${RESTORED_KEY}" >> "$GITHUB_ENV"
+        echo "dep-cache-restored-key=${RESTORED_KEY}" >> "$GITHUB_OUTPUT"
 
         STATUS_FILE=~/.gradle/caches/.gradle-cache-build-status
         if [[ -z "$RESTORED_KEY" ]]; then
           echo "::notice::No dependency cache found — cold start."
-          echo "GRADLE_CACHE_RESTORED_BUILD_STATUS=none" >> "$GITHUB_ENV"
         elif [[ -f "$STATUS_FILE" ]]; then
           RESTORED_STATUS=$(cat "$STATUS_FILE")
-          echo "GRADLE_CACHE_RESTORED_BUILD_STATUS=${RESTORED_STATUS}" >> "$GITHUB_ENV"
           echo "::notice::Restored dependency cache '${RESTORED_KEY}' (created from a ${RESTORED_STATUS} build)."
         else
           # Older cache entry without a status file — treat as unknown / success.
-          echo "GRADLE_CACHE_RESTORED_BUILD_STATUS=unknown" >> "$GITHUB_ENV"
           echo "::notice::Restored dependency cache '${RESTORED_KEY}' (no build-status marker found)."
         fi
