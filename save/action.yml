@@ -22,11 +22,6 @@ inputs:
       Accepted values: success, failure, cancelled.
       When cancelled the save is skipped entirely.
     required: true
-  wrapper-cache-hit:
-    description: >
-      Whether the wrapper cache was already restored. Pass the restore action's
-      `wrapper-cache-hit` output. When 'true' the wrapper cache save is skipped.
-    required: true
   dep-cache-restored-key:
     description: >
       The dependency cache key that was matched during restore. Pass the restore

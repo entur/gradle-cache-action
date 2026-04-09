@@ -21,9 +21,6 @@ outputs:
   gradle-version:
     description: Gradle version extracted from gradle-wrapper.properties
     value: ${{ steps.read-gradle-version.outputs.gradle-version }}
-  wrapper-cache-hit:
-    description: Whether the Gradle wrapper cache was restored ('true' or 'false')
-    value: ${{ steps.record-wrapper-hit.outputs.wrapper-cache-hit }}
   dep-cache-restored-key:
     description: The cache key that was matched when restoring the dependency cache
     value: ${{ steps.check-cache-status.outputs.dep-cache-restored-key }}
@@ -100,7 +97,11 @@ runs:
       env:
         GRADLE_WRAPPER_CACHE_HIT: ${{ steps.restore-wrapper.outputs.cache-hit }}
       run: |
-        echo "wrapper-cache-hit=$GRADLE_WRAPPER_CACHE_HIT" >> "$GITHUB_OUTPUT"
+        if [[ "$GRADLE_WRAPPER_CACHE_HIT" == "true" ]]; then
+          mkdir -p ~/.gradle
+          touch ~/.gradle/.wrapper-cache-hit
+          echo "::notice::Wrapper cache hit — marker written to ~/.gradle/.wrapper-cache-hit"
+        fi
 
     # Restore the dependency cache.
     #
