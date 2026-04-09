@@ -41,7 +41,7 @@ runs:
           echo YES > $GRADLE_HOME_DIR/.gradle/wrapper-save-always
         fi
 
-    - name: Read Gradle version and compute build hash
+    - name: Compute build files hash
       id: read-gradle-version
       shell: bash
       env:
@@ -63,7 +63,7 @@ runs:
           | sha256sum \
           | cut -c1-64)
         
-        mkdir -p $GRADLE_HOME_DIR/.gradle
+        mkdir -p "$GRADLE_HOME_DIR/.gradle"
         echo "${BUILD_HASH}" > $GRADLE_HOME_DIR/.gradle/build-hash
 
     #
@@ -90,17 +90,16 @@ runs:
         DEPENDENCIES_CACHE_MATCHED_KEY: ${{ steps.restore-dependencies.outputs.cache-matched-key }}
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
       run: |
-        mkdir -p $GRADLE_HOME_DIR/.gradle
         if [[ "$DEPENDENCIES_CACHE_HIT" == "true" ]]; then
           # got a cache hit for the same build files, for a successful build
-          echo "YES" > $GRADLE_HOME_DIR/.gradle/dependencies-save-never
+          echo "YES" > "$GRADLE_HOME_DIR/.gradle/dependencies-save-never"
           echo "Saving cache not necessary."
         elif [[ "$DEPENDENCIES_CACHE_MATCHED_KEY" == "$DEPENDENCIES_CACHE_PRIMARY_KEY"* ]]; then
           # got a cache hit for the same build files, for a failed build
-          echo "YES" > $GRADLE_HOME_DIR/.gradle/dependencies-save-on-success
+          echo "YES" > "$GRADLE_HOME_DIR/.gradle/dependencies-save-on-success"
           echo "Saving cache on success."
         else 
           # got a cache hit, for a build with different build files
-          echo "YES" > $GRADLE_HOME_DIR/.gradle/dependencies-save-always
+          echo "YES" > "$GRADLE_HOME_DIR/.gradle/dependencies-save-always"
           echo "Saving cache."
         fi
