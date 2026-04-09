@@ -33,7 +33,7 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ~/.gradle/wrapper/dists
-        key: gradle-wrapper-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
+        key: v1-gradle-wrapper-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
 
     - name: Leave wrapper caching instructions for the save action
       shell: bash
@@ -82,10 +82,10 @@ runs:
       uses: actions/cache/restore@v5
       with:
         path: ~/.gradle/caches
-        key: gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}
+        key: v1-gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}
         restore-keys: |
-          gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}-failure-build
-          gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
+          v1-gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}-failure-build
+          v1-gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
 
     - name: Leave dependency caching instructions for the save action
       shell: bash

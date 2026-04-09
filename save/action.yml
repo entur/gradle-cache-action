@@ -39,7 +39,7 @@ runs:
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/wrapper/dists
-        key: gradle-wrapper-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
+        key: v1-gradle-wrapper-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}
 
     # Invoke Gradle's built-in cache cleanup mechanism (Gradle 8+).
     # A temporary init script is copied from the action's scripts/ directory
@@ -128,11 +128,11 @@ runs:
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/caches
-        key: gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}
+        key: v1-gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}
 
     - name: Save Gradle dependency cache for failed build.
       if: inputs.build-outcome == 'failure' && hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != ''
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/caches
-        key: gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref || 'local' }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}-failure-build
+        key: v1-gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}-failure-build
