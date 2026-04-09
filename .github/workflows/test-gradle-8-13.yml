@@ -34,7 +34,6 @@ jobs:
         with:
           gradle-home-directory: examples/gradle-8-13
           build-outcome: ${{ job.status }}
-          gradle-version: ${{ steps.restore.outputs.gradle-version }}
           wrapper-cache-hit: ${{ steps.restore.outputs.wrapper-cache-hit }}
           dep-cache-restored-key: ${{ steps.restore.outputs.dep-cache-restored-key }}
 

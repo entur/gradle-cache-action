@@ -22,10 +22,6 @@ inputs:
       Accepted values: success, failure, cancelled.
       When cancelled the save is skipped entirely.
     required: true
-  gradle-version:
-    description: >
-      Gradle version returned by the restore action's `gradle-version` output.
-    required: true
   wrapper-cache-hit:
     description: >
       Whether the wrapper cache was already restored. Pass the restore action's
@@ -50,12 +46,23 @@ runs:
     # Save the wrapper distribution so subsequent runs skip the download even
     # when the build failed.  actions/cache/save is a no-op if the key already
     # exists in the cache.
+    - name: Read Gradle version
+      id: read-gradle-version
+      if: inputs.build-outcome != 'cancelled'
+      shell: bash
+      env:
+        GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
+      run: |
+        WRAPPER_PROPS="${GRADLE_HOME_DIR}/gradle/wrapper/gradle-wrapper.properties"
+        GRADLE_VERSION=$(sed -n 's/.*gradle-\([0-9][0-9.]*\)-\(bin\|all\).*/\1/p' "$WRAPPER_PROPS")
+        echo "gradle-version=${GRADLE_VERSION}" >> "$GITHUB_OUTPUT"
+
     - name: Save Gradle wrapper cache
       if: inputs.build-outcome != 'cancelled' && inputs.wrapper-cache-hit != 'true'
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/wrapper/dists
-        key: gradle-wrapper-${{ runner.os }}-${{ inputs.gradle-version }}
+        key: gradle-wrapper-${{ runner.os }}-${{ steps.read-gradle-version.outputs.gradle-version }}
 
     # Re-hash build files (they may have been generated/modified during the build)
     # and compute the key we would save under for this build outcome:
@@ -77,7 +84,7 @@ runs:
         BUILD_OUTCOME: ${{ inputs.build-outcome }}
         ACTION_REF: ${{ github.action_ref || 'local' }}
         CACHE_PREFIX: ${{ inputs.cache-prefix }}
-        GRADLE_CACHE_VERSION: ${{ inputs.gradle-version }}
+        GRADLE_CACHE_VERSION: ${{ steps.read-gradle-version.outputs.gradle-version }}
         GRADLE_DEP_CACHE_RESTORED_KEY: ${{ inputs.dep-cache-restored-key }}
       run: |
         CURRENT_HASH=$(find "${GRADLE_HOME_DIR}" \
@@ -132,7 +139,7 @@ runs:
       shell: bash
       env:
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
-        GRADLE_CACHE_VERSION: ${{ inputs.gradle-version }}
+        GRADLE_CACHE_VERSION: ${{ steps.read-gradle-version.outputs.gradle-version }}
       run: |
         if [[ -z "${GRADLE_CACHE_VERSION}" ]]; then
           echo "::error::GRADLE_CACHE_VERSION is not set. Did you call the restore action first?"
