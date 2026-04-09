@@ -121,8 +121,9 @@ runs:
     # so the save action knows whether to force a fresh save.
     - name: Check restored cache build status
       shell: bash
+      env:
+        RESTORED_KEY: ${{ steps.restore-deps.outputs.cache-matched-key }}
       run: |
-        RESTORED_KEY="${{ steps.restore-deps.outputs.cache-matched-key }}"
         echo "GRADLE_DEP_CACHE_RESTORED_KEY=${RESTORED_KEY}" >> "$GITHUB_ENV"
 
         STATUS_FILE=~/.gradle/caches/.gradle-cache-build-status
