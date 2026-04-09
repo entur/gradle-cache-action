@@ -95,7 +95,7 @@ runs:
           # got a cache hit for the same build files, for a successful build
           echo "YES" > $GRADLE_HOME_DIR/.gradle/dependencies-save-never
           echo "Saving cache not necessary."
-        elif [[ $DEPENDENCIES_CACHE_MATCHED_KEY == "$DEPENDENCIES_CACHE_PRIMARY_KEY"* ]]; then
+        elif [[ "$DEPENDENCIES_CACHE_MATCHED_KEY" == "$DEPENDENCIES_CACHE_PRIMARY_KEY"* ]]; then
           # got a cache hit for the same build files, for a failed build
           echo "YES" > $GRADLE_HOME_DIR/.gradle/dependencies-save-on-success
           echo "Saving cache on success."
