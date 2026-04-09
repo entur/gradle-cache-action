@@ -47,7 +47,7 @@ runs:
     # A throw-away temp directory is used as the working directory to work
     # around https://github.com/gradle/gradle/issues/29377.
     - name: Clean Gradle dependency cache
-      if: inputs.build-outcome == 'success' && (hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != '' || hashFiles(format('{0}/.gradle/.dependencies-on-success', inputs.gradle-home-directory)) != '')
+      if: inputs.build-outcome == 'success' && (hashFiles(format('{0}/.gradle/dependencies-save-always', inputs.gradle-home-directory)) != '' || hashFiles(format('{0}/.gradle/dependencies-on-success', inputs.gradle-home-directory)) != '')
       shell: bash
       env:
         GRADLE_HOME_DIR: ${{ inputs.gradle-home-directory }}
@@ -124,14 +124,14 @@ runs:
         rm -f ~/.gradle/init.d/cache-settings.gradle
 
     - name: Save Gradle dependency cache for successful build
-      if: inputs.build-outcome == 'success' && (hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != '' || hashFiles(format('{0}/.gradle/.dependencies-on-success', inputs.gradle-home-directory)) != '')
+      if: inputs.build-outcome == 'success' && (hashFiles(format('{0}/.gradle/dependencies-save-always', inputs.gradle-home-directory)) != '' || hashFiles(format('{0}/.gradle/dependencies-on-success', inputs.gradle-home-directory)) != '')
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/caches
         key: v1-gradle-dependencies-${{ runner.os }}-${{ inputs.cache-prefix }}-${{ github.action_ref }}-${{ hashFiles(format('{0}/gradle/wrapper/gradle-wrapper.properties', inputs.gradle-home-directory)) }}-${{ hashFiles(format('{0}/.gradle/build-hash', inputs.gradle-home-directory)) }}
 
     - name: Save Gradle dependency cache for failed build.
-      if: inputs.build-outcome == 'failure' && hashFiles(format('{0}/.gradle/.dependencies-save-always', inputs.gradle-home-directory)) != ''
+      if: inputs.build-outcome == 'failure' && hashFiles(format('{0}/.gradle/dependencies-save-always', inputs.gradle-home-directory)) != ''
       uses: actions/cache/save@v5
       with:
         path: ~/.gradle/caches
