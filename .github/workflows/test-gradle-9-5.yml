@@ -1,0 +1,65 @@
+name: Test Gradle 9.5.1
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # ── First restore ─────────────────────────────────────────────────────
+      - name: Restore Gradle cache
+        uses: ./restore
+        with:
+          gradle-home-directory: examples/gradle-9-5
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+        working-directory: examples/gradle-9-5
+
+      - name: Save Gradle cache
+        if: always()
+        uses: ./save
+        with:
+          gradle-home-directory: examples/gradle-9-5
+          build-outcome: ${{ job.status }}
+
+      # Wipe the local Gradle home so the second restore starts from scratch.
+      - name: Delete local Gradle cache directories
+        run: rm -rf ~/.gradle/caches ~/.gradle/wrapper/dists
+
+      # ── Second restore ────────────────────────────────────────────────────
+      - name: Restore Gradle cache (verify round-trip)
+        uses: ./restore
+        with:
+          gradle-home-directory: examples/gradle-9-5
+
+      - name: Verify Gradle cache directories were restored
+        run: |
+          FAIL=0
+
+          if [[ ! -d ~/.gradle/wrapper/dists ]] || [[ -z "$(ls -A ~/.gradle/wrapper/dists)" ]]; then
+            echo "::error::Wrapper cache not restored — ~/.gradle/wrapper/dists is missing or empty."
+            FAIL=1
+          else
+            echo "Wrapper cache restored: $(ls ~/.gradle/wrapper/dists)"
+          fi
+
+          if [[ ! -d ~/.gradle/caches ]] || [[ -z "$(ls -A ~/.gradle/caches)" ]]; then
+            echo "::error::Dependency cache not restored — ~/.gradle/caches is missing or empty."
+            FAIL=1
+          else
+            echo "Dependency cache restored: $(ls ~/.gradle/caches)"
+          fi
+
+          exit $FAIL
